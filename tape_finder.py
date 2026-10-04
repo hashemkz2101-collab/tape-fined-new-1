@@ -165,10 +165,19 @@ def _geom(sig, info, column=False, y_max=None):
     """True/False اگر بشود با هندسه تصمیم گرفت، وگرنه None."""
     if not sig or not sig.get("rel") or not info.get("rect") or not info.get("win"):
         return None
-    if sig.get("mode") != info.get("mode"):
-        return None
     x, y, w, h = sig["rel"]
     ix, iy, iw, ih = rel_rect(info)
+    if sig.get("mode") != info.get("mode"):
+        # روش خواندن کادر موقع تایپ با لحظه‌ی معرفی فرق دارد (مثلاً uia ↔ caret ↔ click):
+        # فقط مرکز کادر را با تلرانس بیشتر مقایسه می‌کنیم
+        cx, cy, icx, icy = x + w / 2.0, y + h / 2.0, ix + iw / 2.0, iy + ih / 2.0
+        if abs(icx - cx) > 150:
+            return False
+        if column:
+            if icy < cy - TOL_CARET:
+                return False
+            return y_max is None or icy < y_max - TOL_CARET
+        return abs(icy - cy) <= TOL_CARET
     if info["mode"] == "uia":
         if abs(ix - x) > TOL_POS or abs(iw - w) > TOL_W:
             return False
@@ -237,13 +246,19 @@ def classify(info, calib, auto_names=False):
         return "sleeve"
 
     # --- ۳) دستگیره‌ی پنجره‌ی کادر (فقط وقتی برای دو کادر متفاوت ثبت شده)
-    if not info.get("rect"):
-        th = (tape or {}).get("hwnd")
-        sh = (sleeve or {}).get("hwnd")
-        if th and sh and th != sh and info.get("hwnd"):
-            if info["hwnd"] == th:
+    th = (tape or {}).get("hwnd")
+    sh = (sleeve or {}).get("hwnd")
+    hw = info.get("hwnd")
+    if hw and th != sh:
+        # کادری که فقط با دستگیره معرفی شده (مختصات نداشته) و دستگیره‌اش با دیگری فرق دارد
+        if th and hw == th and not (tape or {}).get("rel"):
+            return "tape"
+        if sh and hw == sh and not (sleeve or {}).get("rel"):
+            return "sleeve"
+        if not info.get("rect"):
+            if th and hw == th:
                 return "tape"
-            if info["hwnd"] == sh:
+            if sh and hw == sh:
                 return "sleeve"
 
     # --- ۴) آزمایشی: نام گروه‌های بالادست
@@ -568,6 +583,12 @@ if IS_WIN:
         except Exception:
             return ""
 
+    def cursor_pos():
+        pt = wintypes.POINT()
+        if user32.GetCursorPos(ctypes.byref(pt)):
+            return (pt.x, pt.y)
+        return None
+
     def read_clipboard():
         try:
             if not user32.OpenClipboard(None):
@@ -842,6 +863,9 @@ else:
     def read_clipboard():
         return ""
 
+    def cursor_pos():
+        return None
+
 
 # ----------------------------------------------------------------------------
 # رابط کاربری
@@ -1063,7 +1087,18 @@ def run_gui():
             else:
                 show_overlay("عددی پیدا نشد", ["اول عدد کد را تایپ کنید، بعد همین کلید را بزنید."], "#555555", 4)
             return
-        info = probe_field(st.get("click"))
+        recent = st.get("click") if time.time() - st.get("click_t", 0) < 20 else None
+        info = probe_field(recent)
+        if action in ("tape", "sleeve", "bound") and not info.get("rect"):
+            # UIA/caret چیزی نداد: موقعیت ماوس (که معمولاً روی همان کادر است) را به‌عنوان نقطه‌ی کادر بگیر
+            cp = st.get("click") if recent else cursor_pos()
+            if cp:
+                info["click"] = list(cp)
+                info["rect"] = (cp[0] - 1, cp[1] - 1, cp[0] + 1, cp[1] + 1)
+                info["mode"] = "click"
+                info["via_cursor"] = True
+        if action != "diag":
+            debug_log("معرفی %s: %s" % (action, json.dumps(info, ensure_ascii=False, default=str)))
         if action == "diag":
             os.makedirs(APP_DIR, exist_ok=True)
             with open(DIAG_PATH, "a", encoding="utf-8") as f:
@@ -1079,7 +1114,7 @@ def run_gui():
             return
         if not info.get("rect"):
             show_overlay("هشدار: مختصات کادر خوانده نشد",
-                         ["فقط با دستگیره‌ی پنجره معرفی می‌شود؛ احتمال خطا هست."], "#b26a00", 6)
+                         ["ماوس را روی کادر بگذارید (یا داخل کادر کلیک کنید) و دوباره بزنید."], "#b26a00", 6)
         cfg.setdefault("calib", {})[action] = make_signature(info)
         if not target_var.get().strip() and info.get("proc"):
             target_var.set(info["proc"])
@@ -1087,7 +1122,8 @@ def run_gui():
         refresh_calib_label()
         names = {"tape": "کادر کد تپه (G)", "sleeve": "ستون کد آستین (B)", "bound": "مرز پایین آستین"}
         show_overlay("✔ %s معرفی شد" % names[action],
-                     ["روش تشخیص: %s" % {"uia": "UI Automation", "caret": "مکان نشانگر متن", "click": "محل آخرین کلیک"}.get(info.get("mode"), "دستگیره‌ی پنجره")],
+                     ["روش تشخیص: %s" % {"uia": "UI Automation", "caret": "مکان نشانگر متن",
+                                                                  "click": "موقعیت ماوس/کلیک (قبل از تایپ داخل کادر کلیک کنید)"}.get(info.get("mode"), "دستگیره‌ی پنجره")],
                      "#1b6ca8", 4)
 
     # ---- حلقه‌ی اصلی ----
@@ -1129,6 +1165,7 @@ def run_gui():
             return
         if ev[0] == "click":
             st["click"] = (ev[1], ev[2])
+            st["click_t"] = time.time()
         if ev[0] == "key" and ev[2] and ev[4] and ev[1] in HOTKEYS:
             handle_hotkey(HOTKEYS[ev[1]], fg)
             return
