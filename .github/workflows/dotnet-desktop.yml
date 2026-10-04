@@ -1,0 +1,21 @@
+name: Build Windows EXE (Win7+ compatible)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"      # آخرین نسخه‌ی پایتون که ویندوز ۷ را پشتیبانی می‌کند
+          architecture: "x86"        # exe ۳۲ بیتی روی ویندوز ۳۲ و ۶۴ بیتی اجرا می‌شود
+      - run: python -m pip install --upgrade pip
+      - run: pip install "pyinstaller==5.13.2" uiautomation
+      - run: pyinstaller --onefile --noconsole --name TapeFinder --hidden-import uiautomation --hidden-import comtypes tape_finder.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TapeFinder-exe
+          path: dist/TapeFinder.exe
