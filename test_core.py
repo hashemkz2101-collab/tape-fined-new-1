@@ -97,6 +97,9 @@ cn={"tape":tf.make_signature(ai("1901268",700,80)),"sleeve":tf.make_signature(ai
 assert cn["tape"]["aid"]=="" and not tf.usable_aid("1901268") and tf.usable_aid("txtA")
 assert tf.classify(ai("1901268",650,300),cn)=="sleeve"      # geometry decides, not the shared aid
 assert tf.classify(ai("1901268",702,82),cn)=="tape"
+assert tf.classify(ai("txtCode_Tappe",5,5),{})=="tape"            # by name, no calibration
+assert tf.classify(ai("txtCode_Sleeve2",5,5),{})=="sleeve"
+assert tf.classify(ai("txtCode_Pants1",5,5),{}) is None
 print("keybuf+classify OK")
 
 # --- API with mock server ---
