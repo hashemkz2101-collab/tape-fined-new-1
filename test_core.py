@@ -46,13 +46,20 @@ assert tf.classify(info(700,80,win=moved),calib)=="tape"
 cal_c={"tape":tf.make_signature(info(710,81,w=0,h=18,mode="caret"))}
 assert tf.classify(info(760,83,w=0,h=18,mode="caret"),cal_c)=="tape"
 assert tf.classify(info(760,200,w=0,h=18,mode="caret"),cal_c) is None
-# mixed modes never match by geometry
-assert tf.classify(info(700,80,mode="caret"),calib) is None
+# mixed modes: compared by box center (y tol, x loose)
+assert tf.classify(info(740,92,w=0,h=2,mode="caret"),calib)=="tape"
+assert tf.classify(info(700,300,w=0,h=18,mode="caret"),calib)=="sleeve"
+assert tf.classify(info(100,92,w=0,h=2,mode="caret"),calib) is None
 # hwnd fallback when no rect
 h1=dict(info(0,0),rect=None,mode="",hwnd=111); h2=dict(h1,hwnd=222)
 cal_h={"tape":tf.make_signature(h1),"sleeve":tf.make_signature(h2)}
 assert tf.classify(dict(h1),cal_h)=="tape" and tf.classify(dict(h2),cal_h)=="sleeve"
 assert tf.classify(dict(h1,hwnd=333),cal_h) is None
+# tape hwnd-only + sleeve with geometry, different hwnd
+tp=dict(h1,hwnd=111); sl=dict(info(650,240),hwnd=222)
+cal_m={"tape":tf.make_signature(tp),"sleeve":tf.make_signature(sl)}
+assert tf.classify(dict(h1,hwnd=111),cal_m)=="tape"
+assert tf.classify(dict(info(650,300),hwnd=222),cal_m)=="sleeve"
 cal_same={"tape":tf.make_signature(h1),"sleeve":tf.make_signature(h1)}
 assert tf.classify(dict(h1),cal_same) is None   # shared hwnd is ambiguous
 # auto names
