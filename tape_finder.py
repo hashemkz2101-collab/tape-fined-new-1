@@ -214,6 +214,10 @@ def aid_prefix(aid):
     return re.sub(r"[\d_]+$", "", aid or "")
 
 
+NAME_TAPE_RE = re.compile(r"tap+e|tape|tappe", re.I)
+NAME_SLEEVE_RE = re.compile(r"sleeve|astin|asteen", re.I)
+
+
 def classify(info, calib, auto_names=False):
     """کادر فعال را تشخیص می‌دهد: 'tape' | 'sleeve' | None."""
     calib = calib or {}
@@ -221,6 +225,13 @@ def classify(info, calib, auto_names=False):
     aid = info.get("aid") or ""
     if not usable_aid(aid):
         aid = ""
+
+    # --- ۰) نام خودِ کادر در برنامه‌ی سفارش (مثلاً txtCode_Tappe) — بدون نیاز به معرفی
+    if aid:
+        if NAME_TAPE_RE.search(aid) and not NAME_SLEEVE_RE.search(aid):
+            return "tape"
+        if NAME_SLEEVE_RE.search(aid) and not NAME_TAPE_RE.search(aid):
+            return "sleeve"
 
     # --- ۱) AutomationId (برنامه‌های WinForms/WPF): مستقل از جای کادر، اسکرول و اندازه‌ی پنجره
     if aid:
